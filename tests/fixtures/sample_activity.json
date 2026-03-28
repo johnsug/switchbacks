@@ -1,0 +1,16 @@
+{
+  "id": "12345678",
+  "name": "Morning Trail Run",
+  "distance": 12874.4,
+  "moving_time": 5400,
+  "elapsed_time": 5520,
+  "total_elevation_gain": 342.3,
+  "average_heartrate": 152,
+  "max_heartrate": 178,
+  "average_cadence": 87,
+  "start_date": "2024-08-15T07:30:00Z",
+  "start_latlng": [39.9526, -105.1686],
+  "map": {
+    "summary_polyline": "e{lvFvj`uOrABJsDIwBVmBj@o@r@MhAJtAZfAj@`Ax@p@bAZpADbAN|@`@l@n@\\~@LjAFvAIfBq@bBcAlAoAv@yAt@{BZkCNkCDoC"
+  }
+}

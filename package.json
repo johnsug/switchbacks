@@ -1,0 +1,24 @@
+{
+  "name": "switchback-mcp",
+  "version": "0.1.0",
+  "description": "Trail runner analytics MCP server — effort-adjusted metrics for Claude",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "latest",
+    "better-sqlite3": "^9.0.0",
+    "node-fetch": "^3.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0",
+    "@types/better-sqlite3": "^7.0.0",
+    "vitest": "^1.0.0"
+  }
+}
