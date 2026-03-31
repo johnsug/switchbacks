@@ -1,5 +1,6 @@
 export const METERS_PER_MILE = 1609.344;
 export const FEET_PER_METER = 3.28084;
+export const SECS_PER_DAY = 86_400;
 
 /**
  * Convert sec/meter to min/mile.
@@ -54,6 +55,15 @@ export function formatPace(secPerM: number): string {
   const paddedSecs = seconds.toString().padStart(2, "0");
   return `${minutes}:${paddedSecs}/mi`;
 }
+
+/** Round to 0 decimal places. */
+export const round0 = (n: number): number => Math.round(n);
+/** Round to 1 decimal place. */
+export const round1 = (n: number): number => Math.round(n * 10) / 10;
+/** Round to 2 decimal places. */
+export const round2 = (n: number): number => Math.round(n * 100) / 100;
+/** Round to 3 decimal places. */
+export const round3 = (n: number): number => Math.round(n * 1000) / 1000;
 
 /**
  * Format total seconds as "H:MM:SS" if >= 1 hour, or "M:SS" otherwise.

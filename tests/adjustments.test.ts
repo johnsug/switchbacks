@@ -32,7 +32,7 @@ describe("units", () => {
 
   describe("minPerMileToSecPerM", () => {
     it("converts 8 min/mile to ~0.2988 sec/m", () => {
-      expect(minPerMileToSecPerM(8)).toBeCloseTo(0.2988, 4);
+      expect(minPerMileToSecPerM(8)).toBeCloseTo(0.2983, 4);
     });
   });
 

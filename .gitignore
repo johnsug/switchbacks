@@ -14,5 +14,14 @@ dist/
 # OS
 .DS_Store
 
+# Wrangler local secrets (never commit)
+worker/.dev.vars
+
 # Spec
-switchback-mcp-spec.md
+switchbacks-mcp-spec.md
+Claude.md
+.claude/
+
+# gpx files
+docs/*.gpx
+
