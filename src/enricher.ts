@@ -4,7 +4,7 @@ import type { RawActivity, EnrichedActivity } from "./types.js";
 import { decodePolyline } from "./utils/polyline.js";
 import { metersToFeet } from "./utils/units.js";
 import { fetchWeather, isoDateInTimezone, isoHourInTimezone } from "./sources/open_meteo.js";
-import { fetchAvgElevationForActivity } from "./sources/resolver.js";
+import { fetchAvgElevationForActivity, fetchTrackForActivity } from "./sources/resolver.js";
 import { computeGap } from "./adjustments/gap.js";
 import { computeAltitudeAdj } from "./adjustments/altitude.js";
 import { computeHeatAdj } from "./adjustments/heat.js";
@@ -24,9 +24,10 @@ export async function enrichActivity(
   options: {
     includeWeather?: boolean;
     includeElevationProfile?: boolean;
+    includeTrack?: boolean;
   } = {}
 ): Promise<EnrichedActivity> {
-  const { includeWeather = true, includeElevationProfile = true } = options;
+  const { includeWeather = true, includeElevationProfile = true, includeTrack = true } = options;
 
   // Return cached enrichment if fresh
   const cached = cache.getEnrichment(activity.id);
@@ -70,6 +71,12 @@ export async function enrichActivity(
     } else {
       warnings.push("Elevation data unavailable — altitude adjustment skipped.");
     }
+  }
+
+  // Cache the GPS track if not already stored (permanent — routes don't change).
+  if (includeTrack && !cache.getTrack(activity.id)) {
+    const track = await fetchTrackForActivity(config, activity.id);
+    if (track && track.length > 0) cache.setTrack(activity.id, track);
   }
 
   // -------------------------------------------------------------------------
@@ -192,7 +199,7 @@ export async function enrichActivities(
   activities: RawActivity[],
   cache: Cache,
   config: Config,
-  options?: { includeWeather?: boolean; includeElevationProfile?: boolean }
+  options?: { includeWeather?: boolean; includeElevationProfile?: boolean; includeTrack?: boolean }
 ): Promise<EnrichedActivity[]> {
   const results: EnrichedActivity[] = [];
   const CONCURRENCY = 5;

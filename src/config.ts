@@ -1,6 +1,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import type { UserRecord } from "./db.js";
 
 export interface Config {
   dataSource: "strava" | "garmin";
@@ -63,6 +64,27 @@ export function loadConfig(): Config {
     altitudeThresholdFt:    envNum("SWITCHBACKS_ALT_THRESHOLD_FT") ?? file.altitudeThresholdFt ?? DEFAULTS.altitudeThresholdFt,
     altitudeCoefficient:    envNum("SWITCHBACKS_ALT_COEFF")        ?? file.altitudeCoefficient ?? DEFAULTS.altitudeCoefficient,
     cacheDir:               env("SWITCHBACKS_CACHE_DIR")           ?? file.cacheDir            ?? DEFAULTS.cacheDir,
+  };
+}
+
+/**
+ * Build a Config from a hosted UserRecord.
+ * Credentials come from the DB; tuning params use defaults.
+ */
+export function loadConfigForUser(user: UserRecord, dataDir: string): Config {
+  return {
+    dataSource:          user.dataSource,
+    stravaAccessToken:   user.stravaAccessToken,
+    stravaRefreshToken:  user.stravaRefreshToken,
+    garminEmail:         user.garminEmail,
+    garminPassword:      null, // never stored for hosted users
+    garminAuthType:      user.garminCookies ? "sso" : "password",
+    garminCookies:       user.garminCookies,
+    timezone:            DEFAULTS.timezone,
+    gapCoefficient:      DEFAULTS.gapCoefficient,
+    altitudeThresholdFt: DEFAULTS.altitudeThresholdFt,
+    altitudeCoefficient: DEFAULTS.altitudeCoefficient,
+    cacheDir:            join(dataDir, user.token),
   };
 }
 

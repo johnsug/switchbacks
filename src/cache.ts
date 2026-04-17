@@ -2,6 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import type { GpxTrackpoint } from "./utils/gpx.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -68,6 +69,12 @@ export class Cache {
         data        TEXT NOT NULL,
         cached_at   INTEGER NOT NULL
       );
+
+      -- GPS tracks have no TTL — a run's route never changes.
+      CREATE TABLE IF NOT EXISTS activity_tracks (
+        activity_id TEXT PRIMARY KEY,
+        track_json  TEXT NOT NULL
+      );
     `);
   }
 
@@ -113,6 +120,24 @@ export class Cache {
     this.db.prepare(
       "INSERT OR REPLACE INTO activity_enrichments (activity_id, data, cached_at) VALUES (?, ?, ?)"
     ).run(enrichment.activityId, JSON.stringify(enrichment), Date.now());
+  }
+
+  // -------------------------------------------------------------------------
+  // GPS tracks — permanent cache (routes don't change)
+  // -------------------------------------------------------------------------
+
+  getTrack(activityId: string): GpxTrackpoint[] | null {
+    const row = this.db.prepare(
+      "SELECT track_json FROM activity_tracks WHERE activity_id = ?"
+    ).get(activityId) as { track_json: string } | undefined;
+
+    return row ? (JSON.parse(row.track_json) as GpxTrackpoint[]) : null;
+  }
+
+  setTrack(activityId: string, track: GpxTrackpoint[]): void {
+    this.db.prepare(
+      "INSERT OR REPLACE INTO activity_tracks (activity_id, track_json) VALUES (?, ?)"
+    ).run(activityId, JSON.stringify(track));
   }
 
   // -------------------------------------------------------------------------

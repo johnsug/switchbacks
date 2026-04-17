@@ -7,6 +7,7 @@
   "scripts": {
     "build": "tsc",
     "setup": "node dist/setup/index.js",
+    "auth-upload": "node dist/auth-upload.js",
     "install-browser": "playwright install chromium",
     "test": "vitest run",
     "test:watch": "vitest",

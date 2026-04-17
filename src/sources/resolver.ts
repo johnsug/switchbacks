@@ -9,7 +9,7 @@ import type { RawActivity } from "../types.js";
 import type { Config } from "../config.js";
 import { listActivities as stravaList, getActivity as stravaGet, fetchStravaAltitudeStream, fetchStravaStreams, refreshAccessToken } from "./strava.js";
 import { listGarminActivities, getGarminActivity, fetchGarminActivityGpx, type GarminAuth } from "./garmin.js";
-import { parseElevationsFromGpx, parseGpxTrackpoints } from "../utils/gpx.js";
+import { parseElevationsFromGpx, parseGpxTrackpoints, type GpxTrackpoint } from "../utils/gpx.js";
 import { mean } from "../utils/geo.js";
 import { trackpointsToSamples, stravaStreamsToSamples, type ActivitySample } from "../utils/intervals.js";
 import { mergeAndWriteConfig } from "../setup/config-writer.js";
@@ -144,6 +144,29 @@ export async function fetchActivitySamples(
   } catch {
     return null;
   }
+}
+
+/**
+ * Fetch the full GPS track for an activity.
+ * Garmin: parses all trackpoints from GPX (lat/lon/ele/HR/cadence/time).
+ * Strava: returns null for now — latlng stream support is a future addition.
+ */
+export async function fetchTrackForActivity(
+  config: Config,
+  activityId: string
+): Promise<GpxTrackpoint[] | null> {
+  if (config.dataSource === "garmin") {
+    if (!config.garminEmail && !config.garminCookies) return null;
+    try {
+      const gpx = await fetchGarminActivityGpx(garminAuth(config), activityId);
+      if (!gpx) return null;
+      return parseGpxTrackpoints(gpx);
+    } catch {
+      return null;
+    }
+  }
+  // Strava: TODO — fetch latlng+time+altitude streams
+  return null;
 }
 
 export async function getActivityFromSource(
