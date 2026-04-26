@@ -61,31 +61,28 @@ if (!serverUrl) {
     process.exit(1);
   }
 
-  const browser = await playwrightChromium.launch({ headless: false });
-  const context = await browser.newContext();
-  const page    = await context.newPage();
+  const browser = await playwrightChromium.launch({
+    headless: false,
+    args: ["--disable-blink-features=AutomationControlled"],
+  });
+  const context = await browser.newContext({
+    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    viewport: { width: 1280, height: 800 },
+  });
+  // Hide navigator.webdriver so Garmin's bot detection doesn't fire
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+  });
+  const page = await context.newPage();
 
   await page.goto("https://connect.garmin.com/signin/", {
     waitUntil: "domcontentloaded",
     timeout: 30_000,
   });
 
-  // Click the Google button (handles both iframe and top-level layouts)
-  const frame  = page.frameLocator("iframe").first();
-  const btn    = frame.locator('[class*="google" i], [data-testid*="google" i], [aria-label*="Google" i]').first();
-  const topBtn = page.locator('[class*="google" i], [data-testid*="google" i], [aria-label*="Google" i]').first();
-
-  await Promise.race([
-    btn.click({ timeout: 15_000 }),
-    topBtn.click({ timeout: 15_000 }),
-  ]).catch(() => {
-    console.log("Could not auto-click Google button — please click it manually in the browser.");
-  });
-
-  // Wait for Google SSO popup and then for final Garmin Connect redirect
-  await context.waitForEvent("page").catch(() => null);
-
-  console.log("Waiting for you to complete sign-in (up to 3 minutes)...");
+  // Let the user sign in manually — clicking Google, completing 2FA, etc.
+  // We just wait until Garmin redirects away from the sign-in page.
+  console.log("Sign in with Google in the browser window (up to 3 minutes)...");
   await page.waitForURL(
     (url) => url.hostname.includes("connect.garmin.com") && !url.pathname.includes("signin"),
     { timeout: 180_000 }

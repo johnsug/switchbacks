@@ -6,6 +6,7 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
+    "sync": "node dist/sync.js",
     "setup": "node dist/setup/index.js",
     "auth-upload": "node dist/auth-upload.js",
     "install-browser": "playwright install chromium",

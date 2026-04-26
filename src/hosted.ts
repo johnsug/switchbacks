@@ -20,6 +20,7 @@ import { UserDb } from "./db.js";
 import { Cache } from "./cache.js";
 import { loadConfigForUser } from "./config.js";
 import { buildMcpServer } from "./mcp-server.js";
+import { getRecentRuns } from "./tools/get_recent_runs.js";
 
 const DATA_DIR     = process.env["DATA_DIR"]!;
 const SERVER_URL   = (process.env["SERVER_URL"] ?? "").replace(/\/$/, "");
@@ -228,6 +229,49 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     return;
   }
 
+  // ── Activities API: GET /api/activities/:token ──────────────────────────────
+  const activitiesMatch = path.match(/^\/api\/activities\/([0-9a-f-]+)$/i);
+  if (activitiesMatch && method === "GET") {
+    const token = activitiesMatch[1]!;
+    const user  = userDb.getUser(token);
+    if (!user) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Unknown token" }));
+      return;
+    }
+
+    const days  = parseInt(url.searchParams.get("days")  ?? "90",  10);
+    const limit = parseInt(url.searchParams.get("limit") ?? "50", 10);
+
+    const config = loadConfigForUser(user, DATA_DIR);
+    const cache  = new Cache(config.cacheDir);
+    const result = await getRecentRuns(
+      { days_back: days, limit, include_weather: true, include_elevation_profile: true },
+      cache,
+      config
+    );
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(result));
+    return;
+  }
+
+  // ── Friend dashboard: GET /dashboard/:token ─────────────────────────────────
+  const dashMatch = path.match(/^\/dashboard\/([0-9a-f-]+)$/i);
+  if (dashMatch && method === "GET") {
+    const token = dashMatch[1]!;
+    const user  = userDb.getUser(token);
+    if (!user) {
+      res.writeHead(404, { "Content-Type": "text/html; charset=utf-8" });
+      res.end("<h1>Not found</h1><p>That link doesn't look right.</p>");
+      return;
+    }
+
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    res.end(dashboardHtml(token, SERVER_URL));
+    return;
+  }
+
   res.writeHead(404, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ error: "Not found" }));
 }
@@ -243,6 +287,210 @@ function readBody(req: IncomingMessage): Promise<string> {
     req.on("end",  () => resolve(Buffer.concat(chunks).toString("utf-8")));
     req.on("error", reject);
   });
+}
+
+function dashboardHtml(token: string, serverUrl: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Switchbacks</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+           background: #f8f9fa; color: #1a1a1a; min-height: 100vh; }
+    header { background: #fff; border-bottom: 1px solid #e5e7eb;
+             padding: 16px 24px; display: flex; align-items: center; gap: 12px; }
+    header h1 { font-size: 18px; font-weight: 700; }
+    header span { font-size: 22px; }
+    .subhead { font-size: 13px; color: #888; margin-left: auto; }
+    main { max-width: 1100px; margin: 32px auto; padding: 0 24px; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+             gap: 16px; margin-bottom: 32px; }
+    .stat { background: #fff; border-radius: 12px; padding: 20px;
+            box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+    .stat-label { font-size: 12px; color: #888; font-weight: 500;
+                  text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px; }
+    .stat-value { font-size: 26px; font-weight: 700; }
+    .stat-sub   { font-size: 12px; color: #aaa; margin-top: 4px; }
+    table { width: 100%; border-collapse: collapse; background: #fff;
+            border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+    thead th { background: #f1f3f5; font-size: 11px; font-weight: 600;
+               text-transform: uppercase; letter-spacing: .06em; color: #555;
+               padding: 12px 14px; text-align: left; }
+    tbody tr { border-top: 1px solid #f1f3f5; }
+    tbody tr:hover { background: #fafafa; }
+    td { padding: 12px 14px; font-size: 14px; vertical-align: middle; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 20px;
+            font-size: 12px; font-weight: 500; }
+    .pill-green  { background: #d1fae5; color: #065f46; }
+    .pill-yellow { background: #fef3c7; color: #92400e; }
+    .pill-red    { background: #fee2e2; color: #991b1b; }
+    .pace-row { display: flex; flex-direction: column; gap: 2px; }
+    .pace-main { font-weight: 600; }
+    .pace-adj  { font-size: 12px; color: #888; }
+    .weather-icon { margin-right: 4px; }
+    #loading { text-align: center; padding: 80px; color: #aaa; font-size: 16px; }
+    #error   { text-align: center; padding: 80px; color: #c00; }
+    .refresh { background: none; border: 1px solid #d1d5db; border-radius: 8px;
+               padding: 6px 14px; font-size: 13px; cursor: pointer; color: #555; }
+    .refresh:hover { background: #f3f4f6; }
+  </style>
+</head>
+<body>
+<header>
+  <span>🏃</span>
+  <h1>Switchbacks</h1>
+  <div class="subhead" id="sync-time"></div>
+  <button class="refresh" onclick="load()">Refresh</button>
+</header>
+<main>
+  <div class="stats" id="stats"></div>
+  <div id="loading">Loading your runs…</div>
+  <div id="error" style="display:none"></div>
+  <table id="run-table" style="display:none">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Name</th>
+        <th>Miles</th>
+        <th>Time</th>
+        <th>Vert</th>
+        <th>Pace (raw → adjusted)</th>
+        <th>HR</th>
+        <th>Fitness</th>
+        <th>Weather</th>
+      </tr>
+    </thead>
+    <tbody id="run-body"></tbody>
+  </table>
+</main>
+<script>
+const API = '${serverUrl}/api/activities/${token}?days=90&limit=50';
+
+async function load() {
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('error').style.display   = 'none';
+  document.getElementById('run-table').style.display = 'none';
+  document.getElementById('stats').innerHTML = '';
+
+  let data;
+  try {
+    const r = await fetch(API);
+    if (!r.ok) throw new Error(await r.text());
+    data = await r.json();
+  } catch (e) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('error').style.display = 'block';
+    document.getElementById('error').textContent = 'Could not load runs: ' + e.message;
+    return;
+  }
+
+  document.getElementById('loading').style.display = 'none';
+
+  const runs = data.runs || [];
+  if (!runs.length) {
+    document.getElementById('error').style.display = 'block';
+    document.getElementById('error').textContent = 'No runs found in the last 90 days.';
+    return;
+  }
+
+  // ── Summary stats ───────────────────────────────────────────────────────────
+  const totalMiles  = runs.reduce((s, r) => s + (r.distance_miles || 0), 0);
+  const avgHr       = avg(runs.map(r => r.avg_hr).filter(Boolean));
+  const recentEff   = avg(runs.slice(0, 8).map(r => r.efficiency?.full).filter(Boolean));
+  const olderEff    = avg(runs.slice(8, 16).map(r => r.efficiency?.full).filter(Boolean));
+  const trend       = recentEff && olderEff ? ((recentEff - olderEff) / olderEff * 100) : null;
+
+  document.getElementById('stats').innerHTML = [
+    stat(runs.length + ' runs', totalMiles.toFixed(0) + ' miles', 'last 90 days'),
+    stat(avgHr ? Math.round(avgHr) + ' bpm' : '—', 'avg heart rate', ''),
+    recentEff
+      ? stat(recentEff.toFixed(4), 'fitness score',
+             trend !== null ? (trend > 0 ? '↑ ' : '↓ ') + Math.abs(trend).toFixed(1) + '% vs prev 8 runs' : '')
+      : '',
+  ].join('');
+
+  document.getElementById('sync-time').textContent =
+    'Updated ' + new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+
+  // ── Run rows ────────────────────────────────────────────────────────────────
+  const tbody = document.getElementById('run-body');
+  tbody.innerHTML = runs.map(r => {
+    const eff = r.efficiency?.full;
+    const effPill = eff
+      ? '<span class="pill ' + effClass(eff) + '">' + eff.toFixed(4) + '</span>'
+      : '<span style="color:#ccc">—</span>';
+
+    const paceAdj = r.pace?.heat_adj || r.pace?.alt_adj || r.pace?.gap;
+    const paceCell = paceAdj && paceAdj !== r.pace?.raw
+      ? '<div class="pace-row"><span class="pace-main">' + (r.pace?.raw||'—') + '</span>'
+        + '<span class="pace-adj">→ ' + paceAdj + ' adj</span></div>'
+      : '<span class="pace-main">' + (r.pace?.raw||'—') + '</span>';
+
+    const wx = r.weather
+      ? weatherIcon(r.weather.temp_f, r.weather.dewpoint_f)
+        + Math.round(r.weather.temp_f) + '°F'
+        + (r.weather.dewpoint_f >= 60
+           ? ' <small style="color:#c07000">dp ' + Math.round(r.weather.dewpoint_f) + '°</small>'
+           : '')
+      : '—';
+
+    return '<tr>'
+      + '<td>' + fmtDate(r.date) + '</td>'
+      + '<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(r.name||'') + '</td>'
+      + '<td>' + (r.distance_miles||0).toFixed(1) + '</td>'
+      + '<td>' + (r.duration||'—') + '</td>'
+      + '<td>' + (r.elevation_gain_ft ? Math.round(r.elevation_gain_ft).toLocaleString() + ' ft' : '—') + '</td>'
+      + '<td>' + paceCell + '</td>'
+      + '<td>' + (r.avg_hr ? Math.round(r.avg_hr) : '—') + '</td>'
+      + '<td>' + effPill + '</td>'
+      + '<td style="font-size:13px">' + wx + '</td>'
+      + '</tr>';
+  }).join('');
+
+  document.getElementById('run-table').style.display = 'table';
+}
+
+function avg(arr) { return arr.length ? arr.reduce((a,b) => a+b, 0)/arr.length : null; }
+
+function effClass(v) {
+  if (v >= 0.020) return 'pill-green';
+  if (v >= 0.015) return 'pill-yellow';
+  return 'pill-red';
+}
+
+function weatherIcon(temp, dp) {
+  if (dp >= 65) return '<span class="weather-icon">🥵</span>';
+  if (temp <= 32) return '<span class="weather-icon">🥶</span>';
+  if (temp >= 80) return '<span class="weather-icon">☀️</span>';
+  return '<span class="weather-icon">🌤️</span>';
+}
+
+function fmtDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso + 'T12:00:00');
+  return d.toLocaleDateString([], { month:'short', day:'numeric' });
+}
+
+function esc(s) {
+  return s.replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function stat(value, label, sub) {
+  return '<div class="stat">'
+    + '<div class="stat-label">' + esc(label) + '</div>'
+    + '<div class="stat-value">' + esc(String(value)) + '</div>'
+    + (sub ? '<div class="stat-sub">' + esc(sub) + '</div>' : '')
+    + '</div>';
+}
+
+load();
+</script>
+</body>
+</html>`;
 }
 
 function connectedHtml(service: string, mcpUrl: string): string {
